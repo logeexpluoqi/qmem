@@ -13,7 +13,7 @@ set(CMAKE_C_COMPILER gcc)
 set(CMAKE_CXX_COMPILER g++)
 
 # 添加可执行文件
-add_executable(qmem main.c)
+add_executable(qmem main.c qmem.c)
 
 # 如果有库文件，可以添加库
 # add_library(my_library STATIC my_library.c)

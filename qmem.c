@@ -13,9 +13,9 @@ static inline qsize_t align_up(qsize_t size, qsize_t align)
     return (size + align - 1) & ~(align - 1);
 }
 
-static inline int block_valid(QMem *mem)
+static inline int block_valid(QMem *mem, QMemBlock *block)
 {
-    return (mem->block.magic == mem->magic);
+    return (block->magic == mem->magic);
 }
 
 int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min_split, uint8_t magic)
@@ -26,24 +26,25 @@ int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min
     mem->align = align;
     mem->min_split = min_split;
     mem->magic = magic;
-    mem->max_used = 0;
+    mem->max_block = 0;
     mem->total_free = size;
-    mem->free_list = (QMemBlock *)mempool;
-    mem->block.next = qnull;
-    mem->block.prev = qnull;
-    mem->block.size = size;
-    mem->block.used = 0;
-    mem->block.magic = magic;
+    mem->blocks = (QMemBlock *)mempool;
+    mem->blocks->size = size;
+    mem->blocks->used = 0;
+    mem->blocks->next = qnull;
+    mem->blocks->prev = qnull;
+    mem->blocks->magic = magic;
     return 0;
 }
 
 void *qmem_alloc(QMem *mem, qsize_t size)
 {
-    if((mem == qnull) || (size == 0) || (!mem->free_list)) {
+    if((mem == qnull) || (size == 0) || !mem->blocks) {
         return qnull;
     }
     qsize_t total_size = align_up(size + sizeof(QMemBlock), mem->align);
-    QMemBlock *best = qnull, *current = mem->free_list;
+    QMemBlock *best = qnull;
+    QMemBlock *current = mem->blocks;
 
     while(current) {
         if(!current->used && current->size >= total_size) {
@@ -78,7 +79,7 @@ void *qmem_alloc(QMem *mem, qsize_t size)
     if(best->prev) {
         best->prev->next = best->next;
     } else {
-        mem->free_list = best->next;
+        mem->blocks = best->next;
     }
 
     if(best->next) {
@@ -96,8 +97,8 @@ int qmem_free(QMem *mem, void *ptr)
     }
 
     QMemBlock *header = (QMemBlock *)((uint8_t *)ptr - sizeof(QMemBlock));
-    if(!block_valid(header)) {
-        return;
+    if(!block_valid(mem, header)) {
+        return -1;
     }
 
     header->used = 0;
@@ -121,12 +122,12 @@ int qmem_free(QMem *mem, void *ptr)
         }
     }
 
-    header->next = mem->free_list;
+    header->next = mem->blocks;
     header->prev = qnull;
-    if(mem->free_list) {
-        mem->free_list->prev = header;
+    if(mem->blocks) {
+        mem->blocks->prev = header;
     }
-    mem->free_list = header;
+    mem->blocks = header;
 }
 
 int qmem_defrag(QMem *mem)
@@ -134,7 +135,7 @@ int qmem_defrag(QMem *mem)
     if(mem == qnull) {
         return -1;
     }
-    QMemBlock *current = mem->free_list;
+    QMemBlock *current = mem->blocks;
     while(current && current->next) {
         if((uint8_t *)current + current->size == (uint8_t *)current->next) {
             current->size += current->next->size;
@@ -146,4 +147,23 @@ int qmem_defrag(QMem *mem)
             current = current->next;
         }
     }
+}
+
+int qmem_status(QMem *mem)
+{
+    if(mem == qnull) {
+        return -1;
+    }
+    mem->max_block = 0;
+    mem->total_free = 0;
+
+    QMemBlock *current = mem->blocks;
+    while(current) {
+        mem->total_free += current->size;
+        if(current->size > mem->max_block) {
+            mem->max_block = current->size;
+        }
+        current = current->next;
+    }
+    return 0;
 }

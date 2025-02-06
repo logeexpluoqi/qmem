@@ -28,12 +28,11 @@ typedef struct qmem_t {
 } QMemBlock;
 
 typedef struct {
-    QMemBlock block;
-    QMemBlock *free_list;
+    QMemBlock *blocks;
     qsize_t min_split;
     qsize_t align;
     qsize_t total_free;
-    qsize_t max_used;
+    qsize_t max_block;
     uint8_t magic;
 } QMem;
 
@@ -45,5 +44,7 @@ void *qmem_alloc(QMem *mem, qsize_t size);
 int qmem_free(QMem *mem, void *ptr);
 
 int qmem_defrag(QMem *mem);
+
+int qmem_status(QMem *mem);
 
 #endif
