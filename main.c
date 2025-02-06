@@ -23,14 +23,14 @@ void mem_stats(void)
 
 int main()
 {
-    qmem_init(&mem, mempool, sizeof(mempool), 4, 16, 0x55);
+    qmem_init(&mem, mempool, sizeof(mempool), 8, 16, 0x55);
     mem_stats();
     int *arr1 = qmem_alloc(&mem, 100 * sizeof(int));
     if(arr1 == qnull) {
         printf(" #! arr1 alloc failed \r\n");
     }
     mem_stats();
-    char *str = qmem_alloc(&mem, 128);
+    char *str = qmem_alloc(&mem, 1280);
     if(str == qnull) {
         printf(" #! str alloc failed \r\n");
     }
@@ -57,6 +57,22 @@ int main()
     qmem_free(&mem, arr2);
     mem_stats();
     qmem_free(&mem, big);
+    mem_stats();
+
+    void *big1 = qmem_alloc(&mem, 200 * sizeof(int));  // 测试大块分配
+    if(big1 == qnull) {
+        printf(" #! big1 alloc failed \r\n");
+    }
+    mem_stats();
+    void *big2 = qmem_alloc(&mem, 200 * sizeof(int));  // 测试大块分配
+    if(big2 == qnull) {
+        printf(" #! big2 alloc failed \r\n");
+    }
+    mem_stats();
+
+    qmem_free(&mem, big1);
+    qmem_free(&mem, big2);
+
     mem_stats();
 
     return 0;

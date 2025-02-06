@@ -103,22 +103,26 @@ int qmem_free(QMem *mem, void *ptr)
 
     header->used = 0;
 
-    while(header->prev && header->prev->used == 0) {
-        QMemBlock *prev_block = header->prev;
-        prev_block->size += header->size;
-        prev_block->next = header->next;
+    QMemBlock *current_prev;
+    while((current_prev = header->prev) != qnull &&
+        current_prev->used == 0 &&
+        (uint8_t *)current_prev + current_prev->size == (uint8_t *)header) {
+        current_prev->size += header->size;
+        current_prev->next = header->next;
         if(header->next) {
-            header->next->prev = prev_block;
+            header->next->prev = current_prev;
         }
-        header = prev_block;
+        header = current_prev;
     }
 
-    while(header->next && header->next->used == 0) {
-        QMemBlock *next_block = header->next;
-        header->size += next_block->size;
-        header->next = next_block->next;
-        if(next_block->next) {
-            next_block->next->prev = header;
+    QMemBlock *current_next;
+    while((current_next = header->next) != qnull &&
+        current_next->used == 0 &&
+        (uint8_t *)header + header->size == (uint8_t *)current_next) {
+        header->size += current_next->size;
+        header->next = current_next->next;
+        if(current_next->next) {
+            current_next->next->prev = header;
         }
     }
 
@@ -159,7 +163,9 @@ int qmem_status(QMem *mem)
 
     QMemBlock *current = mem->blocks;
     while(current) {
-        mem->total_free += current->size;
+        if(!current->used) {
+            mem->total_free += current->size;
+        }
         if(current->size > mem->max_block) {
             mem->max_block = current->size;
         }

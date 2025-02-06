@@ -105,38 +105,43 @@ void *mem_alloc(size_t size)
     return (void *)((uint8_t *)best + sizeof(mem_block_t));
 }
 
-void mem_free(void *ptr)
-{
-    if(!ptr) return;
+void mem_free(void* ptr) {
+    if (!ptr) return;
 
-    mem_block_t *header = (mem_block_t *)((uint8_t *)ptr - sizeof(mem_block_t));
-    if(!block_valid(header)) return;  // 有效性检查
+    mem_block_t* header = (mem_block_t*)((uint8_t*)ptr - sizeof(mem_block_t));
+    if (!block_valid(header)) return;
 
     header->used = 0;
 
-    // 前向合并
-    while(header->prev && header->prev->used == 0) {
-        mem_block_t *prev_block = header->prev;
-        prev_block->size += header->size;
-        prev_block->next = header->next;
-        if(header->next)
-            header->next->prev = prev_block;
-        header = prev_block;
+    /* 前向合并（修复版）*/
+    mem_block_t* current_prev;
+    while ((current_prev = header->prev) != NULL && 
+           current_prev->used == 0 && 
+           (uint8_t*)current_prev + current_prev->size == (uint8_t*)header) {
+        // 合并到前块
+        current_prev->size += header->size;
+        current_prev->next = header->next;
+        if (header->next)
+            header->next->prev = current_prev;
+        header = current_prev; // 关键：更新当前头指针
     }
 
-    // 后向合并
-    while(header->next && header->next->used == 0) {
-        mem_block_t *next_block = header->next;
-        header->size += next_block->size;
-        header->next = next_block->next;
-        if(next_block->next)
-            next_block->next->prev = header;
+    /* 后向合并（修复版）*/
+    mem_block_t* current_next;
+    while ((current_next = header->next) != NULL && 
+           current_next->used == 0 && 
+           (uint8_t*)header + header->size == (uint8_t*)current_next) {
+        // 合并到当前块
+        header->size += current_next->size;
+        header->next = current_next->next;
+        if (current_next->next)
+            current_next->next->prev = header;
     }
 
-    // 插入到空闲链表头部
+    /* 插入空闲链表 */
     header->next = free_list;
     header->prev = NULL;
-    if(free_list)
+    if (free_list)
         free_list->prev = header;
     free_list = header;
 }
