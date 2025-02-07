@@ -2,7 +2,7 @@
  * @ Author: luoqi
  * @ Create Time: 2025-02-05 20:28
  * @ Modified by: luoqi
- * @ Modified time: 2025-02-05 22:21
+ * @ Modified time: 2025-02-07 22:56
  * @ Description:
  */
 
@@ -92,46 +92,58 @@ void *qmem_alloc(QMem *mem, qsize_t size)
 
 int qmem_free(QMem *mem, void *ptr)
 {
-    if((mem == qnull) || !ptr) {
+    if ((mem == qnull) || !ptr) {
         return -1;
     }
 
+    // 获取块头
     QMemBlock *header = (QMemBlock *)((uint8_t *)ptr - sizeof(QMemBlock));
-    if(!block_valid(mem, header)) {
+    if (!block_valid(mem, header)) {
         return -1;
     }
 
     header->used = 0;
 
-    QMemBlock *current_prev;
-    while((current_prev = header->prev) != qnull &&
-        current_prev->used == 0 &&
-        (uint8_t *)current_prev + current_prev->size == (uint8_t *)header) {
-        current_prev->size += header->size;
-        current_prev->next = header->next;
-        if(header->next) {
-            header->next->prev = current_prev;
-        }
-        header = current_prev;
+    // 在空闲链表中按物理地址顺序查找插入位置
+    QMemBlock *prev = qnull;
+    QMemBlock *curr = mem->blocks;
+    while (curr && ((uint8_t *)curr < (uint8_t *)header)) {
+        prev = curr;
+        curr = curr->next;
     }
 
-    QMemBlock *current_next;
-    while((current_next = header->next) != qnull &&
-        current_next->used == 0 &&
-        (uint8_t *)header + header->size == (uint8_t *)current_next) {
-        header->size += current_next->size;
-        header->next = current_next->next;
-        if(current_next->next) {
-            current_next->next->prev = header;
+    // 将释放块插入链表中
+    header->prev = prev;
+    header->next = curr;
+    if (prev) {
+        prev->next = header;
+    } else {
+        mem->blocks = header;
+    }
+    if (curr) {
+        curr->prev = header;
+    }
+
+    // 尝试向前合并: 如果前一块的起始地址与 header 紧邻，则合并
+    if (header->prev && ((uint8_t *)header->prev + header->prev->size == (uint8_t *)header)) {
+        header->prev->size += header->size;
+        header->prev->next = header->next;
+        if (header->next) {
+            header->next->prev = header->prev;
+        }
+        header = header->prev;
+    }
+
+    // 尝试向后合并: 如果 header 与下一块紧邻，则合并
+    if (header->next && ((uint8_t *)header + header->size == (uint8_t *)header->next)) {
+        header->size += header->next->size;
+        header->next = header->next->next;
+        if (header->next) {
+            header->next->prev = header;
         }
     }
 
-    header->next = mem->blocks;
-    header->prev = qnull;
-    if(mem->blocks) {
-        mem->blocks->prev = header;
-    }
-    mem->blocks = header;
+    return 0;
 }
 
 int qmem_defrag(QMem *mem)
@@ -151,6 +163,7 @@ int qmem_defrag(QMem *mem)
             current = current->next;
         }
     }
+    return 0;
 }
 
 int qmem_status(QMem *mem)
