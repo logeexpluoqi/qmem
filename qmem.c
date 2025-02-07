@@ -2,7 +2,7 @@
  * @ Author: luoqi
  * @ Create Time: 2025-02-05 20:28
  * @ Modified by: luoqi
- * @ Modified time: 2025-02-07 22:56
+ * @ Modified time: 2025-02-07 23:10
  * @ Description:
  */
 
@@ -96,7 +96,6 @@ int qmem_free(QMem *mem, void *ptr)
         return -1;
     }
 
-    // 获取块头
     QMemBlock *header = (QMemBlock *)((uint8_t *)ptr - sizeof(QMemBlock));
     if (!block_valid(mem, header)) {
         return -1;
@@ -104,7 +103,6 @@ int qmem_free(QMem *mem, void *ptr)
 
     header->used = 0;
 
-    // 在空闲链表中按物理地址顺序查找插入位置
     QMemBlock *prev = qnull;
     QMemBlock *curr = mem->blocks;
     while (curr && ((uint8_t *)curr < (uint8_t *)header)) {
@@ -112,7 +110,6 @@ int qmem_free(QMem *mem, void *ptr)
         curr = curr->next;
     }
 
-    // 将释放块插入链表中
     header->prev = prev;
     header->next = curr;
     if (prev) {
@@ -124,7 +121,6 @@ int qmem_free(QMem *mem, void *ptr)
         curr->prev = header;
     }
 
-    // 尝试向前合并: 如果前一块的起始地址与 header 紧邻，则合并
     if (header->prev && ((uint8_t *)header->prev + header->prev->size == (uint8_t *)header)) {
         header->prev->size += header->size;
         header->prev->next = header->next;
@@ -134,7 +130,6 @@ int qmem_free(QMem *mem, void *ptr)
         header = header->prev;
     }
 
-    // 尝试向后合并: 如果 header 与下一块紧邻，则合并
     if (header->next && ((uint8_t *)header + header->size == (uint8_t *)header->next)) {
         header->size += header->next->size;
         header->next = header->next->next;
