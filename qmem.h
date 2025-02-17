@@ -2,7 +2,7 @@
  * @ Author: luoqi
  * @ Create Time: 2025-02-05 20:29
  * @ Modified by: luoqi
- * @ Modified time: 2025-02-05 22:14
+ * @ Modified time: 2025-02-17 14:55
  * @ Description:
  */
 
@@ -15,8 +15,8 @@
 typedef uint32_t qsize_t;
 #endif
 
-#ifndef qnull
-#define qnull ((void *)0)
+#ifndef QNULL
+#define QNULL ((void *)0)
 #endif
 
 typedef struct qmem_t {

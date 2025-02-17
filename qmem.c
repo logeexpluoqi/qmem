@@ -2,7 +2,7 @@
  * @ Author: luoqi
  * @ Create Time: 2025-02-05 20:28
  * @ Modified by: luoqi
- * @ Modified time: 2025-02-07 23:10
+ * @ Modified time: 2025-02-17 14:56
  * @ Description:
  */
 
@@ -20,7 +20,7 @@ static inline int block_valid(QMem *mem, QMemBlock *block)
 
 int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min_split, uint8_t magic)
 {
-    if((mem == qnull) || (mempool == qnull)) {
+    if(!mem || !mempool || (size < sizeof(QMemBlock))) {
         return -1;
     }
     mem->align = align;
@@ -31,19 +31,19 @@ int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min
     mem->blocks = (QMemBlock *)mempool;
     mem->blocks->size = size;
     mem->blocks->used = 0;
-    mem->blocks->next = qnull;
-    mem->blocks->prev = qnull;
+    mem->blocks->next = QNULL;
+    mem->blocks->prev = QNULL;
     mem->blocks->magic = magic;
     return 0;
 }
 
 void *qmem_alloc(QMem *mem, qsize_t size)
 {
-    if((mem == qnull) || (size == 0) || !mem->blocks) {
-        return qnull;
+    if(!mem || (size == 0) || !mem->blocks) {
+        return QNULL;
     }
     qsize_t total_size = align_up(size + sizeof(QMemBlock), mem->align);
-    QMemBlock *best = qnull;
+    QMemBlock *best = QNULL;
     QMemBlock *current = mem->blocks;
 
     while(current) {
@@ -56,7 +56,7 @@ void *qmem_alloc(QMem *mem, qsize_t size)
     }
 
     if(!best) {
-        return qnull;
+        return QNULL;
     }
 
     if(best->size >= total_size + mem->min_split) {
@@ -92,7 +92,7 @@ void *qmem_alloc(QMem *mem, qsize_t size)
 
 int qmem_free(QMem *mem, void *ptr)
 {
-    if ((mem == qnull) || !ptr) {
+    if (!mem || !ptr) {
         return -1;
     }
 
@@ -103,7 +103,7 @@ int qmem_free(QMem *mem, void *ptr)
 
     header->used = 0;
 
-    QMemBlock *prev = qnull;
+    QMemBlock *prev = QNULL;
     QMemBlock *curr = mem->blocks;
     while (curr && ((uint8_t *)curr < (uint8_t *)header)) {
         prev = curr;
@@ -143,7 +143,7 @@ int qmem_free(QMem *mem, void *ptr)
 
 int qmem_defrag(QMem *mem)
 {
-    if(mem == qnull) {
+    if(!mem) {
         return -1;
     }
     QMemBlock *current = mem->blocks;
@@ -163,7 +163,7 @@ int qmem_defrag(QMem *mem)
 
 int qmem_status(QMem *mem)
 {
-    if(mem == qnull) {
+    if(!mem) {
         return -1;
     }
     mem->max_block = 0;
