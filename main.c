@@ -26,17 +26,17 @@ int main()
     qmem_init(&mem, mempool, sizeof(mempool), 8, 16, 0x55);
     mem_stats();
     int *arr1 = qmem_alloc(&mem, 100 * sizeof(int));
-    if(arr1 == qnull) {
+    if(arr1 == QNULL) {
         printf(" #! arr1 alloc failed \r\n");
     }
     mem_stats();
     char *str = qmem_alloc(&mem, 1280);
-    if(str == qnull) {
+    if(str == QNULL) {
         printf(" #! str alloc failed \r\n");
     }
     mem_stats();
     int *arr2 = qmem_alloc(&mem, 50 * sizeof(int));
-    if(arr2 == qnull) {
+    if(arr2 == QNULL) {
         printf(" #! arr2 alloc failed \r\n");
     }
     mem_stats();
@@ -49,7 +49,7 @@ int main()
 
     // 这里应该可以合并arr1和str释放的空间
     void *big = qmem_alloc(&mem, 200 * sizeof(int));  // 测试大块分配
-    if(big == qnull) {
+    if(big == QNULL) {
         printf(" #! big alloc failed \r\n");
     }
     mem_stats();
@@ -60,12 +60,12 @@ int main()
     mem_stats();
 
     void *big1 = qmem_alloc(&mem, 200 * sizeof(int));  // 测试大块分配
-    if(big1 == qnull) {
+    if(big1 == QNULL) {
         printf(" #! big1 alloc failed \r\n");
     }
     mem_stats();
     void *big2 = qmem_alloc(&mem, 200 * sizeof(int));  // 测试大块分配
-    if(big2 == qnull) {
+    if(big2 == QNULL) {
         printf(" #! big2 alloc failed \r\n");
     }
     mem_stats();
