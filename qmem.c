@@ -2,7 +2,7 @@
  * @ Author: luoqi
  * @ Create Time: 2025-02-05 20:28
  * @ Modified by: luoqi
- * @ Modified time: 2025-03-28 17:25
+ * @ Modified time: 2025-03-28 17:34
  * @ Description:
  */
 
@@ -11,7 +11,7 @@
 static inline qsize_t _align_up(qsize_t size, qsize_t align)
 {
     if (align == 0) {
-        return size;
+        align = 1;
     }
     return (size + align - 1) & ~(align - 1);
 }
@@ -24,20 +24,33 @@ static inline int _block_valid(QMem *mem, QMemBlock *block)
 static inline void *_memcpy(void *dest, const void *src, qsize_t n)
 {
     if (!dest || !src) {
-        return QNULL; // 如果指针无效，返回空指针
+        return QNULL;
     }
 
     uint8_t *d = (uint8_t *)dest;
     const uint8_t *s = (const uint8_t *)src;
 
-    // 按字节复制
-    for (qsize_t i = 0; i < n; i++) {
-        d[i] = s[i];
+    while (n >= sizeof(uint64_t)) {
+        *(uint64_t *)d = *(const uint64_t *)s;
+        d += sizeof(uint64_t);
+        s += sizeof(uint64_t);
+        n -= sizeof(uint64_t);
+    }
+
+    while (n >= sizeof(uint32_t)) {
+        *(uint32_t *)d = *(const uint32_t *)s;
+        d += sizeof(uint32_t);
+        s += sizeof(uint32_t);
+        n -= sizeof(uint32_t);
+    }
+
+    while (n > 0) {
+        *d++ = *s++;
+        n--;
     }
 
     return dest;
 }
-
 int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min_split, uint8_t magic, int (*lock)(void), int (*unlock)(void))
 {
     if(!mem || !mempool || ((align & (align - 1)) != 0)) {
@@ -74,34 +87,41 @@ int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min
  */
 void *qmem_alloc(QMem *mem, qsize_t size)
 {
-    if(!mem || (size == 0) || !mem->blocks) {
+    if (!mem || (size == 0) || !mem->blocks) {
         return QNULL;
     }
-    if(mem->lock) {
+    if (mem->lock) {
         mem->lock();
     }
 
     qsize_t total_size = _align_up(size + sizeof(QMemBlock), mem->align);
+    if (total_size > mem->total_free) {
+        if (mem->unlock) {
+            mem->unlock();
+        }
+        return QNULL;
+    }
+
     QMemBlock *best = QNULL;
     QMemBlock *current = mem->blocks;
 
-    while(current) {
-        if(!current->used && current->size >= total_size) {
-            if(!best || current->size < best->size) {
+    while (current) {
+        if (!current->used && current->size >= total_size) {
+            if (!best || current->size < best->size) {
                 best = current;
             }
         }
         current = current->next;
     }
 
-    if(!best) {
-        if(mem->unlock) {
+    if (!best) {
+        if (mem->unlock) {
             mem->unlock();
         }
         return QNULL;
     }
 
-    if(best->size >= total_size + mem->min_split) {
+    if (best->size >= total_size + mem->min_split) {
         QMemBlock *new_block = (QMemBlock *)((uint8_t *)best + total_size);
         new_block->size = best->size - total_size;
         new_block->used = 0;
@@ -109,7 +129,7 @@ void *qmem_alloc(QMem *mem, qsize_t size)
 
         new_block->next = best->next;
         new_block->prev = best;
-        if(best->next) {
+        if (best->next) {
             best->next->prev = new_block;
         }
         best->next = new_block;
@@ -117,19 +137,10 @@ void *qmem_alloc(QMem *mem, qsize_t size)
         best->size = total_size;
     }
 
-    if(best->prev) {
-        best->prev->next = best->next;
-    } else {
-        mem->blocks = best->next;
-    }
-
-    if(best->next) {
-        best->next->prev = best->prev;
-    }
-
     best->used = 1;
+    mem->total_free -= best->size;
 
-    if(mem->unlock) {
+    if (mem->unlock) {
         mem->unlock();
     }
     return (void *)((uint8_t *)best + sizeof(QMemBlock));
@@ -229,39 +240,23 @@ int qmem_free(QMem *mem, void *ptr)
     if (!mem || !ptr) {
         return -1;
     }
-    if(mem->lock) {
+    if (mem->lock) {
         mem->lock();
     }
 
     QMemBlock *header = (QMemBlock *)((uint8_t *)ptr - sizeof(QMemBlock));
     if (!_block_valid(mem, header)) {
-        if(mem->unlock) {
-            mem->unlock();  // 确保解锁
+        if (mem->unlock) {
+            mem->unlock();
         }
-        return -1;  // 返回错误
+        return -1;
     }
 
     header->used = 0;
+    mem->total_free += header->size;
 
-    QMemBlock *prev = QNULL;
-    QMemBlock *curr = mem->blocks;
-    while (curr && ((uint8_t *)curr < (uint8_t *)header)) {
-        prev = curr;
-        curr = curr->next;
-    }
-
-    header->prev = prev;
-    header->next = curr;
-    if (prev) {
-        prev->next = header;
-    } else {
-        mem->blocks = header;
-    }
-    if (curr) {
-        curr->prev = header;
-    }
-
-    if (header->prev && ((uint8_t *)header->prev + header->prev->size == (uint8_t *)header)) {
+    // 合并前后的空闲块
+    if (header->prev && !header->prev->used) {
         header->prev->size += header->size;
         header->prev->next = header->next;
         if (header->next) {
@@ -270,7 +265,7 @@ int qmem_free(QMem *mem, void *ptr)
         header = header->prev;
     }
 
-    if (header->next && ((uint8_t *)header + header->size == (uint8_t *)header->next)) {
+    if (header->next && !header->next->used) {
         header->size += header->next->size;
         header->next = header->next->next;
         if (header->next) {
@@ -278,7 +273,7 @@ int qmem_free(QMem *mem, void *ptr)
         }
     }
 
-    if(mem->unlock) {
+    if (mem->unlock) {
         mem->unlock();
     }
     return 0;
@@ -286,19 +281,19 @@ int qmem_free(QMem *mem, void *ptr)
 
 int qmem_defrag(QMem *mem)
 {
-    if(!mem) {
+    if (!mem) {
         return -1;
     }
-    if(mem->lock) {
+    if (mem->lock) {
         mem->lock();
     }
 
     QMemBlock *current = mem->blocks;
-    while(current && current->next) {
-        if((uint8_t *)current + current->size == (uint8_t *)current->next) {
+    while (current && current->next) {
+        if (!current->used && !current->next->used) {
             current->size += current->next->size;
             current->next = current->next->next;
-            if(current->next) {
+            if (current->next) {
                 current->next->prev = current;
             }
         } else {
@@ -306,11 +301,7 @@ int qmem_defrag(QMem *mem)
         }
     }
 
-    while(mem->blocks && mem->blocks->prev) {
-        mem->blocks = mem->blocks->prev;
-    }
-
-    if(mem->unlock) {
+    if (mem->unlock) {
         mem->unlock();
     }
     return 0;
