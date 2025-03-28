@@ -2,7 +2,7 @@
  * @ Author: luoqi
  * @ Create Time: 2025-02-05 20:29
  * @ Modified by: luoqi
- * @ Modified time: 2025-02-05 22:19
+ * @ Modified time: 2025-03-28 17:16
  * @ Description:
  */
 
@@ -23,7 +23,7 @@ void mem_stats(void)
 
 int main()
 {
-    qmem_init(&mem, mempool, sizeof(mempool), 8, 16, 0x55);
+    qmem_init(&mem, mempool, sizeof(mempool), 8, 16, 0x55, NULL, NULL);
     mem_stats();
     int *arr1 = qmem_alloc(&mem, 100 * sizeof(int));
     if(arr1 == QNULL) {

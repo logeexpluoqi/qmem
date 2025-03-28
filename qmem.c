@@ -2,25 +2,45 @@
  * @ Author: luoqi
  * @ Create Time: 2025-02-05 20:28
  * @ Modified by: luoqi
- * @ Modified time: 2025-02-26 15:26
+ * @ Modified time: 2025-03-28 17:25
  * @ Description:
  */
 
 #include "qmem.h"
 
-static inline qsize_t align_up(qsize_t size, qsize_t align)
+static inline qsize_t _align_up(qsize_t size, qsize_t align)
 {
+    if (align == 0) {
+        return size;
+    }
     return (size + align - 1) & ~(align - 1);
 }
 
-static inline int block_valid(QMem *mem, QMemBlock *block)
+static inline int _block_valid(QMem *mem, QMemBlock *block)
 {
     return (block->magic == mem->magic);
 }
 
-int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min_split, uint8_t magic)
+static inline void *_memcpy(void *dest, const void *src, qsize_t n)
 {
-    if(!mem || !mempool) {
+    if (!dest || !src) {
+        return QNULL; // 如果指针无效，返回空指针
+    }
+
+    uint8_t *d = (uint8_t *)dest;
+    const uint8_t *s = (const uint8_t *)src;
+
+    // 按字节复制
+    for (qsize_t i = 0; i < n; i++) {
+        d[i] = s[i];
+    }
+
+    return dest;
+}
+
+int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min_split, uint8_t magic, int (*lock)(void), int (*unlock)(void))
+{
+    if(!mem || !mempool || ((align & (align - 1)) != 0)) {
         return -1;
     }
     mem->align = align;
@@ -34,6 +54,8 @@ int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min
     mem->blocks->next = QNULL;
     mem->blocks->prev = QNULL;
     mem->blocks->magic = magic;
+    mem->lock = lock;
+    mem->unlock = unlock;
     return 0;
 }
 
@@ -52,46 +74,39 @@ int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min
  */
 void *qmem_alloc(QMem *mem, qsize_t size)
 {
-    // Check if the memory management structure is valid, size is non-zero, and there are available blocks
     if(!mem || (size == 0) || !mem->blocks) {
         return QNULL;
     }
-    // Calculate the total size needed, including the block header and alignment
-    qsize_t total_size = align_up(size + sizeof(QMemBlock), mem->align);
-    // Pointer to the best-fit block found so far
+    if(mem->lock) {
+        mem->lock();
+    }
+
+    qsize_t total_size = _align_up(size + sizeof(QMemBlock), mem->align);
     QMemBlock *best = QNULL;
-    // Pointer to the current block being examined
     QMemBlock *current = mem->blocks;
 
-    // Traverse the list of blocks to find the best-fit block
     while(current) {
-        // Check if the current block is free and large enough
         if(!current->used && current->size >= total_size) {
-            // Update the best-fit block if this block is smaller than the previous best
             if(!best || current->size < best->size) {
                 best = current;
             }
         }
-        // Move to the next block
         current = current->next;
     }
 
-    // If no suitable block is found, return QNULL
     if(!best) {
+        if(mem->unlock) {
+            mem->unlock();
+        }
         return QNULL;
     }
 
-    // If the best-fit block is large enough to split
     if(best->size >= total_size + mem->min_split) {
-        // Create a new block for the remaining free space
         QMemBlock *new_block = (QMemBlock *)((uint8_t *)best + total_size);
-
-        // Initialize the new block
         new_block->size = best->size - total_size;
         new_block->used = 0;
         new_block->magic = mem->magic;
 
-        // Insert the new block into the list
         new_block->next = best->next;
         new_block->prev = best;
         if(best->next) {
@@ -99,11 +114,9 @@ void *qmem_alloc(QMem *mem, qsize_t size)
         }
         best->next = new_block;
 
-        // Update the size of the best-fit block
         best->size = total_size;
     }
 
-    // Remove the best-fit block from the free list
     if(best->prev) {
         best->prev->next = best->next;
     } else {
@@ -114,9 +127,11 @@ void *qmem_alloc(QMem *mem, qsize_t size)
         best->next->prev = best->prev;
     }
 
-    // Mark the best-fit block as used
     best->used = 1;
-    // Return the pointer to the allocated memory (skipping the block header)
+
+    if(mem->unlock) {
+        mem->unlock();
+    }
     return (void *)((uint8_t *)best + sizeof(QMemBlock));
 }
 
@@ -134,8 +149,11 @@ void *qmem_alloc(QMem *mem, qsize_t size)
 void *qmem_realloc(QMem *mem, void *ptr, qsize_t size)
 {
     // Check if the memory management structure is valid
-    if (!mem) {
+    if (!mem || !ptr) {
         return QNULL;
+    }
+    if(mem->lock) {
+        mem->lock();
     }
 
     // If ptr is NULL, allocate a new block
@@ -146,20 +164,29 @@ void *qmem_realloc(QMem *mem, void *ptr, qsize_t size)
     // If size is 0, free the block
     if (size == 0) {
         qmem_free(mem, ptr);
+        if(mem->unlock) {
+            mem->unlock();
+        }
         return QNULL;
     }
 
     // Get the header of the memory block
     QMemBlock *header = (QMemBlock *)((uint8_t *)ptr - sizeof(QMemBlock));
     // Check if the block is valid
-    if (!block_valid(mem, header)) {
+    if (!_block_valid(mem, header)) {
+        if(mem->unlock) {
+            mem->unlock();
+        }
         return QNULL;
     }
 
     // Calculate the total size needed, including the header
-    qsize_t total_size = align_up(size + sizeof(QMemBlock), mem->align);
+    qsize_t total_size = _align_up(size + sizeof(QMemBlock), mem->align);
     // If the original block is large enough, return the original pointer
     if (header->size >= total_size) {
+        if(mem->unlock) {
+            mem->unlock();
+        }
         return ptr;
     }
 
@@ -167,14 +194,21 @@ void *qmem_realloc(QMem *mem, void *ptr, qsize_t size)
     void *new_ptr = qmem_alloc(mem, size);
     // Check if the allocation was successful
     if (new_ptr == QNULL) {
+        if(mem->unlock) {
+            mem->unlock();
+        }
         return QNULL;
     }
 
     // Copy the data from the old block to the new block
-    memcpy(new_ptr, ptr, header->size - sizeof(QMemBlock));
+    _memcpy(new_ptr, ptr, header->size - sizeof(QMemBlock));
 
     // Free the original block
     qmem_free(mem, ptr);
+
+    if(mem->unlock) {
+        mem->unlock();
+    }
 
     return new_ptr;
 }
@@ -192,22 +226,23 @@ void *qmem_realloc(QMem *mem, void *ptr, qsize_t size)
  */
 int qmem_free(QMem *mem, void *ptr)
 {
-    // Check if the memory management structure or the pointer is invalid
     if (!mem || !ptr) {
         return -1;
     }
-
-    // Get the header of the memory block
-    QMemBlock *header = (QMemBlock *)((uint8_t *)ptr - sizeof(QMemBlock));
-    // Check if the block is valid
-    if (!block_valid(mem, header)) {
-        return -1;
+    if(mem->lock) {
+        mem->lock();
     }
 
-    // Mark the block as free
+    QMemBlock *header = (QMemBlock *)((uint8_t *)ptr - sizeof(QMemBlock));
+    if (!_block_valid(mem, header)) {
+        if(mem->unlock) {
+            mem->unlock();  // 确保解锁
+        }
+        return -1;  // 返回错误
+    }
+
     header->used = 0;
 
-    // Find the correct position to insert the freed block in the free list
     QMemBlock *prev = QNULL;
     QMemBlock *curr = mem->blocks;
     while (curr && ((uint8_t *)curr < (uint8_t *)header)) {
@@ -215,7 +250,6 @@ int qmem_free(QMem *mem, void *ptr)
         curr = curr->next;
     }
 
-    // Insert the freed block into the free list
     header->prev = prev;
     header->next = curr;
     if (prev) {
@@ -227,7 +261,6 @@ int qmem_free(QMem *mem, void *ptr)
         curr->prev = header;
     }
 
-    // Merge with the previous free block if adjacent
     if (header->prev && ((uint8_t *)header->prev + header->prev->size == (uint8_t *)header)) {
         header->prev->size += header->size;
         header->prev->next = header->next;
@@ -237,7 +270,6 @@ int qmem_free(QMem *mem, void *ptr)
         header = header->prev;
     }
 
-    // Merge with the next free block if adjacent
     if (header->next && ((uint8_t *)header + header->size == (uint8_t *)header->next)) {
         header->size += header->next->size;
         header->next = header->next->next;
@@ -246,7 +278,9 @@ int qmem_free(QMem *mem, void *ptr)
         }
     }
 
-    // Return success
+    if(mem->unlock) {
+        mem->unlock();
+    }
     return 0;
 }
 
@@ -255,6 +289,10 @@ int qmem_defrag(QMem *mem)
     if(!mem) {
         return -1;
     }
+    if(mem->lock) {
+        mem->lock();
+    }
+
     QMemBlock *current = mem->blocks;
     while(current && current->next) {
         if((uint8_t *)current + current->size == (uint8_t *)current->next) {
@@ -266,6 +304,14 @@ int qmem_defrag(QMem *mem)
         } else {
             current = current->next;
         }
+    }
+
+    while(mem->blocks && mem->blocks->prev) {
+        mem->blocks = mem->blocks->prev;
+    }
+
+    if(mem->unlock) {
+        mem->unlock();
     }
     return 0;
 }
