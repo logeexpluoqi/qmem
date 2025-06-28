@@ -23,7 +23,7 @@ void mem_stats(void)
 
 int main()
 {
-    qmem_init(&mem, mempool, sizeof(mempool), 8, 16, 0x55, NULL, NULL);
+    qmem_init(&mem, mempool, sizeof(mempool), 8, 16, 0x55);
     mem_stats();
     int *arr1 = qmem_alloc(&mem, 100 * sizeof(int));
     if(arr1 == QNULL) {

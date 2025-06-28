@@ -2,7 +2,7 @@
  * @ Author: luoqi
  * @ Create Time: 2025-02-05 20:29
  * @ Modified by: luoqi
- * @ Modified time: 2025-03-28 17:13
+ * @ Modified time: 2025-02-26 15:27
  * @ Description:
  */
 
@@ -34,12 +34,9 @@ typedef struct {
     qsize_t total_free;
     qsize_t max_block;
     uint8_t magic;
-    int (*lock)(void);
-    int (*unlock)(void);
 } QMem;
  
-int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min_split, uint8_t magic, 
-              int (*lock)(void), int (*unlock)(void));
+int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min_split, uint8_t magic);
  
 void *qmem_alloc(QMem *mem, qsize_t size);
  
