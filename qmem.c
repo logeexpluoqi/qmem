@@ -8,7 +8,7 @@
 
 #include "qmem.h"
 
-static inline qsize_t align_up(qsize_t size, qsize_t align)
+static inline size_t align_up(size_t size, size_t align)
 {
     return (size + align - 1) & ~(align - 1);
 }
@@ -18,17 +18,17 @@ static inline int block_valid(QMem *mem, QMemBlock *block)
     return (block->magic == mem->magic);
 }
 
-static void *_memcpy(void *dest, const void *src, qsize_t size)
+static void *_memcpy(void *dest, const void *src, size_t size)
 {
     uint8_t *d = dest;
     const uint8_t *s = src;
-    for(qsize_t i = 0; i < size; i++) {
+    for(size_t i = 0; i < size; i++) {
         d[i] = s[i];
     }
     return dest;
 }
 
-int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min_split, uint8_t magic)
+int qmem_init(QMem *mem, void *mempool, size_t size, size_t align, size_t min_split, uint8_t magic)
 {
     if(!mem || !mempool) {
         return -1;
@@ -60,14 +60,14 @@ int qmem_init(QMem *mem, void *mempool, qsize_t size, qsize_t align, qsize_t min
  * @param size The size of the memory block to allocate.
  * @return A pointer to the allocated memory block, or QNULL if the allocation fails.
  */
-void *qmem_alloc(QMem *mem, qsize_t size)
+void *qmem_alloc(QMem *mem, size_t size)
 {
     // Check if the memory management structure is valid, size is non-zero, and there are available blocks
     if(!mem || (size == 0) || !mem->blocks) {
         return QNULL;
     }
     // Calculate the total size needed, including the block header and alignment
-    qsize_t total_size = align_up(size + sizeof(QMemBlock), mem->align);
+    size_t total_size = align_up(size + sizeof(QMemBlock), mem->align);
     // Pointer to the best-fit block found so far
     QMemBlock *best = QNULL;
     // Pointer to the current block being examined
@@ -141,7 +141,7 @@ void *qmem_alloc(QMem *mem, qsize_t size)
  * @param size The new size of the memory block.
  * @return Pointer to the reallocated memory block, or NULL if the allocation fails.
  */
-void *qmem_realloc(QMem *mem, void *ptr, qsize_t size)
+void *qmem_realloc(QMem *mem, void *ptr, size_t size)
 {
     // Check if the memory management structure is valid
     if (!mem) {
@@ -167,7 +167,7 @@ void *qmem_realloc(QMem *mem, void *ptr, qsize_t size)
     }
 
     // Calculate the total size needed, including the header
-    qsize_t total_size = align_up(size + sizeof(QMemBlock), mem->align);
+    size_t total_size = align_up(size + sizeof(QMemBlock), mem->align);
     // If the original block is large enough, return the original pointer
     if (header->size >= total_size) {
         return ptr;
