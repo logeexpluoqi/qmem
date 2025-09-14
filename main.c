@@ -2,7 +2,7 @@
  * @ Author: luoqi
  * @ Create Time: 2025-02-05 20:29
  * @ Modified by: luoqi
- * @ Modified time: 2025-03-28 17:16
+ * @ Modified time: 2025-06-28 22:05
  * @ Description:
  */
 
@@ -18,25 +18,25 @@ static QMem mem = { 0 };
 void mem_stats(void)
 {
     qmem_status(&mem);
-    printf("Free memory: %u, Largest block: %u\r\n", mem.total_free, mem.max_block);
+    printf("Free memory: %lu, Largest block: %lu\r\n", mem.total_free, mem.max_block);
 }
 
 int main()
 {
-    qmem_init(&mem, mempool, sizeof(mempool), 8, 16, 0x55);
+    qmem_init(&mem, mempool, sizeof(mempool), 8, 16, 0x55, NULL, NULL);
     mem_stats();
     int *arr1 = qmem_alloc(&mem, 100 * sizeof(int));
-    if(arr1 == QNULL) {
+    if(arr1 == NULL) {
         printf(" #! arr1 alloc failed \r\n");
     }
     mem_stats();
     char *str = qmem_alloc(&mem, 1280);
-    if(str == QNULL) {
+    if(str == NULL) {
         printf(" #! str alloc failed \r\n");
     }
     mem_stats();
     int *arr2 = qmem_alloc(&mem, 50 * sizeof(int));
-    if(arr2 == QNULL) {
+    if(arr2 == NULL) {
         printf(" #! arr2 alloc failed \r\n");
     }
     mem_stats();
@@ -49,7 +49,7 @@ int main()
 
     // 这里应该可以合并arr1和str释放的空间
     void *big = qmem_alloc(&mem, 200 * sizeof(int));  // 测试大块分配
-    if(big == QNULL) {
+    if(big == NULL) {
         printf(" #! big alloc failed \r\n");
     }
     mem_stats();
@@ -60,12 +60,12 @@ int main()
     mem_stats();
 
     void *big1 = qmem_alloc(&mem, 200 * sizeof(int));  // 测试大块分配
-    if(big1 == QNULL) {
+    if(big1 == NULL) {
         printf(" #! big1 alloc failed \r\n");
     }
     mem_stats();
     void *big2 = qmem_alloc(&mem, 200 * sizeof(int));  // 测试大块分配
-    if(big2 == QNULL) {
+    if(big2 == NULL) {
         printf(" #! big2 alloc failed \r\n");
     }
     mem_stats();
