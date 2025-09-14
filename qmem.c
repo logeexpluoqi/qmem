@@ -9,7 +9,6 @@
 #include "qmem.h"
 
 static inline size_t align_up(size_t size, size_t align)
-static inline size_t align_up(size_t size, size_t align)
 {
     return (size + align - 1) & ~(align - 1);
 }
@@ -44,7 +43,6 @@ static void *_memcpy(void *dest, const void *src, size_t size)
 
 int qmem_init(QMem *mem, void *mempool, size_t size, size_t align, size_t min_split, uint8_t magic, void (*lock)(void), void (*unlock)(void))
 {
-    if(!mem || !mempool) {
     if(!mem || !mempool) {
         return -1;
     }
@@ -253,7 +251,6 @@ int qmem_free(QMem *mem, void *ptr)
 int qmem_defrag(QMem *mem)
 {
     if(!mem) {
-    if(!mem) {
         return -1;
     }
     if(mem->lock) {
@@ -280,7 +277,6 @@ int qmem_defrag(QMem *mem)
 int qmem_status(QMem *mem)
 {
     if(!mem) {
-    if(!mem) {
         return -1;
     }
     mem->max_block = 0;
@@ -298,4 +294,3 @@ int qmem_status(QMem *mem)
     }
     return 0;
 }
- 

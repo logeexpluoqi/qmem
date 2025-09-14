@@ -14,7 +14,6 @@
  
 typedef struct qmem_t {
     size_t size;
-    size_t size;
     struct qmem_t *next;
     struct qmem_t *prev;
     uint8_t used;
@@ -24,10 +23,6 @@ typedef struct qmem_t {
  
 typedef struct {
     QMemBlock *blocks;
-    size_t min_split;
-    size_t align;
-    size_t total_free;
-    size_t max_block;
     size_t min_split;
     size_t align;
     size_t total_free;
@@ -45,10 +40,8 @@ void *qmem_realloc(QMem *mem, void *ptr, size_t size);
 
 int qmem_free(QMem *mem, void *ptr);
  
- 
 int qmem_defrag(QMem *mem);
- 
- 
+
 int qmem_status(QMem *mem);
  
 #endif
