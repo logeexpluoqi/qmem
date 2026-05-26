@@ -6,14 +6,14 @@
  * @ Description:
  */
 
-#ifndef _QMEM_H
-#define _QMEM_H
+#ifndef _QMEM_H_
+#define _QMEM_H_
 
 #include <stdint.h>
 #include <stddef.h>
-#include "stdbool.h"
+#include <stdbool.h>
 
-#ifndef QMEM_USING_STDLIBC
+#ifndef QMEM_USE_STDLIBC
 #define QMEM_USING_STDLIBC_ 0
 #else
 #define QMEM_USING_STDLIBC_ 1

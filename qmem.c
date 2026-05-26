@@ -1,7 +1,7 @@
 /**
  * Author: luoqi
  * Created Date: 2026-01-12 00:12:3
- * Last Modified: 2026-02-12 00:25:18
+ * Last Modified: 2026-02-12 00:28:30
  * Modified By: luoqi at <**@****>
  * Copyright (c) 2026 <*****>
  * Description:
@@ -25,8 +25,9 @@ static inline int block_valid(QMem *mem, QMemBlock *block)
     if(block->size < sizeof(QMemBlock)) {
         return 0;
     }
-    // Additional check: ensure 'prev' and 'next' (if exist) also have valid magic?
-    // Not done here for performance, but current checks are minimal.
+    if(!block->used) {
+        return 0;
+    }
     return 1;
 }
 
@@ -43,15 +44,52 @@ static void *_memcpy(void *dest, const void *src, size_t size)
         return dest;
     }
 
-    uint8_t *d = dest;
-    const uint8_t *s = src;
-    for(size_t i = 0; i < size; i++) {
-        d[i] = s[i];
+    uint8_t *d = (uint8_t *)dest;
+    const uint8_t *s = (const uint8_t *)src;
+
+    /* copy unaligned head bytes */
+    while(size && ((uintptr_t)d & (sizeof(uint32_t) - 1))) {
+        *d++ = *s++;
+        size--;
     }
+
+    /* copy word-aligned blocks */
+    uint32_t *dw = (uint32_t *)d;
+    const uint32_t *sw = (const uint32_t *)s;
+    while(size >= sizeof(uint32_t)) {
+        *dw++ = *sw++;
+        size -= sizeof(uint32_t);
+    }
+
+    /* copy remaining tail bytes */
+    d = (uint8_t *)dw;
+    s = (const uint8_t *)sw;
+    while(size) {
+        *d++ = *s++;
+        size--;
+    }
+
     return dest;
 }
 
 #endif
+
+/* Split block at new_size, remainder becomes a free block.
+   Caller must ensure: block->size > new_size && (block->size - new_size) >= sizeof(QMemBlock) */
+static inline void block_split(QMemBlock *block, size_t new_size, uint8_t magic)
+{
+    QMemBlock *new_block = (QMemBlock *)((uint8_t *)block + new_size);
+    new_block->size = block->size - new_size;
+    new_block->used = 0;
+    new_block->magic = magic;
+    new_block->next = block->next;
+    new_block->prev = block;
+    if(block->next) {
+        block->next->prev = new_block;
+    }
+    block->next = new_block;
+    block->size = new_size;
+}
 
 static void *_qmem_alloc(QMem *mem, size_t size)
 {
@@ -68,25 +106,13 @@ static void *_qmem_alloc(QMem *mem, size_t size)
     // first fit
     while(current) {
         if(!current->used && current->size >= total_size) {
-            if(current->size >= total_size + mem->min_split) {
-                QMemBlock *new_block = (QMemBlock *)((uint8_t *)current + total_size);
-                new_block->size = current->size - total_size;
-                new_block->used = 0;
-                new_block->magic = mem->magic;
-                new_block->next = current->next;
-                new_block->prev = current;
-                if(current->next) {
-                    current->next->prev = new_block;
-                }
-                current->next = new_block;
-                current->size = total_size;
+            if((current->size >= total_size + mem->min_split) &&
+               ((current->size - total_size) >= sizeof(QMemBlock))) {
+                block_split(current, total_size, mem->magic);
             }
 
             current->used = 1;
-            mem->total_free -= total_size;
-            if(total_size > mem->max_block) {
-                mem->max_block = total_size;
-            }
+            mem->total_free -= current->size;
             return (void *)((uint8_t *)current + sizeof(QMemBlock));
         }
         current = current->next;
@@ -105,6 +131,7 @@ static int _qmem_free(QMem *mem, void *ptr)
         return -1;
     }
 
+    size_t freed_size = header->size;
     header->used = 0;
 
     // merge with prev
@@ -118,6 +145,7 @@ static int _qmem_free(QMem *mem, void *ptr)
         header = header->prev;
     }
 
+    // merge with next
     if(header->next && !header->next->used &&
         ((uint8_t *)header + header->size == (uint8_t *)header->next)) {
         header->size += header->next->size;
@@ -126,7 +154,7 @@ static int _qmem_free(QMem *mem, void *ptr)
             header->next->prev = header;
         }
     }
-    mem->total_free += header->size;
+    mem->total_free += freed_size;
     return 0;
 }
 
@@ -208,6 +236,12 @@ void *qmem_realloc(QMem *mem, void *ptr, size_t size)
     }
 
     if(header->size >= total_size) {
+        // Shrink: split and return excess to free list
+        if((header->size >= total_size + mem->min_split) &&
+           ((header->size - total_size) >= sizeof(QMemBlock))) {
+            block_split(header, total_size, mem->magic);
+            mem->total_free += header->next->size;
+        }
         if(mem->lock) {
             mem->lock(false);
         }
@@ -274,6 +308,15 @@ int qmem_defrag(QMem *mem)
             current = current->next;
         }
     }
+    /* recalculate max_block after merging */
+    mem->max_block = 0;
+    current = mem->blocks;
+    while(current) {
+        if(!current->used && current->size > mem->max_block) {
+            mem->max_block = current->size;
+        }
+        current = current->next;
+    }
     if(mem->lock) {
         mem->lock(false);
     }
@@ -285,6 +328,9 @@ int qmem_status(QMem *mem)
     if(!mem) {
         return -1;
     }
+    if(mem->lock) {
+        mem->lock(true);
+    }
     mem->max_block = 0;
     mem->total_free = 0;
 
@@ -292,11 +338,14 @@ int qmem_status(QMem *mem)
     while(current) {
         if(!current->used) {
             mem->total_free += current->size;
-        }
-        if(current->size > mem->max_block) {
-            mem->max_block = current->size;
+            if(current->size > mem->max_block) {
+                mem->max_block = current->size;
+            }
         }
         current = current->next;
+    }
+    if(mem->lock) {
+        mem->lock(false);
     }
     return 0;
 }

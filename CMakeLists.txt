@@ -15,8 +15,15 @@ set(CMAKE_CXX_COMPILER g++)
 # 添加可执行文件
 add_executable(qmem main.c qmem.c)
 
+# 添加测试可执行文件
+add_executable(test_qmem test_qmem.c qmem.c)
+
 # 如果有库文件，可以添加库
 # add_library(my_library STATIC my_library.c)
 
 # 如果需要链接库，可以使用 target_link_libraries
 # target_link_libraries(qmem my_library)
+
+# 启用测试
+enable_testing()
+add_test(NAME QMemTests COMMAND test_qmem)
