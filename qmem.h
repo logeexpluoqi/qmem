@@ -13,11 +13,8 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#ifndef QMEM_USE_STDLIBC
-#define QMEM_USING_STDLIBC_ 0
-#else
-#define QMEM_USING_STDLIBC_ 1
-#endif
+/* By default the libc <string.h> memcpy is used.
+ * Define QMEM_LIBC_UNDEPENDENT to use the built-in fallback instead. */
 
 typedef struct qmem_t {
     size_t size;
@@ -30,12 +27,14 @@ typedef struct qmem_t {
 
 typedef struct {
     QMemBlock *blocks;
+    void *pool_start;   // Start of the managed pool (after base alignment)
+    void *pool_end;     // End of the managed pool
     size_t min_split;
     size_t align;
     size_t total_free;
     size_t max_block;
     uint8_t magic;
-    void (*lock)(bool);
+    void (*lock)(bool); // Optional lock callback: true = lock, false = unlock (may be NULL)
 } QMem;
 
 int qmem_init(QMem *mem, void *mempool, size_t size, size_t align, size_t min_split, uint8_t magic, void (*lock)(bool));
@@ -48,6 +47,6 @@ int qmem_free(QMem *mem, void *ptr);
 
 int qmem_defrag(QMem *mem);
 
-int qmem_status(QMem *mem);
+int qmem_status(QMem *mem, size_t *total_free, size_t *max_block);
 
 #endif

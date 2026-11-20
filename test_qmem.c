@@ -56,7 +56,7 @@ void test_init_basic(void)
     int result = qmem_init(&mem, mempool, sizeof(mempool), 8, 16, 0x55, NULL);
     TEST_ASSERT(result == 0, "Init should return 0 on success");
     TEST_ASSERT(mem.blocks != NULL, "Blocks should be initialized");
-    TEST_ASSERT(mem.total_free == sizeof(mempool), "Total free should equal mempool size");
+    TEST_ASSERT(mem.total_free <= sizeof(mempool), "Total free should fit within mempool size");
     TEST_ASSERT(mem.magic == 0x55, "Magic number should be set");
     TEST_ASSERT(mem.align == 8, "Alignment should be set");
 }
@@ -74,6 +74,12 @@ void test_init_invalid(void)
     
     result = qmem_init(&mem, NULL, sizeof(mempool), 8, 16, 0x55, NULL);
     TEST_ASSERT(result != 0, "Init with NULL mempool should fail");
+
+    result = qmem_init(&mem, mempool, sizeof(mempool), 3, 16, 0x55, NULL);
+    TEST_ASSERT(result != 0, "Init with non-power-of-two alignment should fail");
+
+    result = qmem_init(&mem, mempool, sizeof(QMemBlock) - 1, 8, 16, 0x55, NULL);
+    TEST_ASSERT(result != 0, "Init with a pool smaller than a block header should fail");
 }
 
 /* Test 3: Basic allocation */
@@ -159,6 +165,9 @@ void test_free_invalid(void)
     void *invalid_ptr = (void *)external_buffer;
     result = qmem_free(&mem, invalid_ptr);
     TEST_ASSERT(result != 0, "Free external pointer should fail");
+
+    void *realloc_result = qmem_realloc(&mem, invalid_ptr, 32);
+    TEST_ASSERT(realloc_result == NULL, "Realloc external pointer should fail");
 }
 
 /* Test 8: Allocate after free */
@@ -359,10 +368,14 @@ void test_status_check(void)
     void *ptr1 = qmem_alloc(&mem, 200);
     void *ptr2 = qmem_alloc(&mem, 300);
     
-    int result = qmem_status(&mem);
+    size_t total_free = 0;
+    size_t max_block = 0;
+    int result = qmem_status(&mem, &total_free, &max_block);
     TEST_ASSERT(result == 0, "Status should return 0");
-    TEST_ASSERT(mem.total_free > 0, "Total free should be greater than 0");
-    TEST_ASSERT(mem.max_block > 0, "Max block should be greater than 0");
+    TEST_ASSERT(total_free > 0, "Total free should be greater than 0");
+    TEST_ASSERT(max_block > 0, "Max block should be greater than 0");
+    TEST_ASSERT(total_free == mem.total_free, "Total free output should match allocator state");
+    TEST_ASSERT(max_block == mem.max_block, "Max block output should match allocator state");
 }
 
 /* Test 17: Alignment test */
@@ -373,7 +386,7 @@ void test_alignment(void)
     uint8_t mempool[2048] = {0};
     QMem mem = {0};
     
-    qmem_init(&mem, mempool, sizeof(mempool), 16, 32, 0x55, NULL);
+    qmem_init(&mem, mempool + 1, sizeof(mempool) - 1, 16, 32, 0x55, NULL);
     
     void *ptr = qmem_alloc(&mem, 100);
     TEST_ASSERT(ptr != NULL, "Allocation should succeed with alignment");

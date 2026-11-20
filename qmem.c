@@ -19,10 +19,18 @@ static inline int block_valid(QMem *mem, QMemBlock *block)
     if(!mem || !block) {
         return 0;
     }
+    uintptr_t pool_start = (uintptr_t)mem->pool_start;
+    uintptr_t pool_end = (uintptr_t)mem->pool_end;
+    uintptr_t block_addr = (uintptr_t)block;
+    if(pool_end < pool_start || block_addr < pool_start ||
+       block_addr > pool_end || pool_end - block_addr < sizeof(QMemBlock)) {
+        return 0;
+    }
     if(block->magic != mem->magic) {
         return 0;
     }
-    if(block->size < sizeof(QMemBlock)) {
+    if(block->size < sizeof(QMemBlock) ||
+       block->size > pool_end - block_addr) {
         return 0;
     }
     if(!block->used) {
@@ -31,7 +39,23 @@ static inline int block_valid(QMem *mem, QMemBlock *block)
     return 1;
 }
 
-#if QMEM_USING_STDLIBC_
+static inline QMemBlock *block_from_ptr(QMem *mem, void *ptr)
+{
+    if(!mem || !ptr) {
+        return NULL;
+    }
+    uintptr_t pool_start = (uintptr_t)mem->pool_start;
+    uintptr_t pool_end = (uintptr_t)mem->pool_end;
+    uintptr_t ptr_addr = (uintptr_t)ptr;
+    if(pool_end < pool_start || ptr_addr < pool_start ||
+       ptr_addr - pool_start < sizeof(QMemBlock) || ptr_addr >= pool_end) {
+        return NULL;
+    }
+    QMemBlock *block = (QMemBlock *)(ptr_addr - sizeof(QMemBlock));
+    return block_valid(mem, block) ? block : NULL;
+}
+
+#ifndef QMEM_LIBC_UNDEPENDENT
 
 #include <string.h>
 #define _memcpy memcpy
@@ -40,35 +64,20 @@ static inline int block_valid(QMem *mem, QMemBlock *block)
 
 static void *_memcpy(void *dest, const void *src, size_t size)
 {
-    if(!dest || !src || size == 0) {
-        return dest;
-    }
-
     uint8_t *d = (uint8_t *)dest;
     const uint8_t *s = (const uint8_t *)src;
 
-    /* copy unaligned head bytes */
-    while(size && ((uintptr_t)d & (sizeof(uint32_t) - 1))) {
+    if((((uintptr_t)d | (uintptr_t)s) & (sizeof(uint32_t) - 1)) == 0) {
+        while(size >= sizeof(uint32_t)) {
+            *(uint32_t *)d = *(const uint32_t *)s;
+            d += sizeof(uint32_t);
+            s += sizeof(uint32_t);
+            size -= sizeof(uint32_t);
+        }
+    }
+    while(size--) {
         *d++ = *s++;
-        size--;
     }
-
-    /* copy word-aligned blocks */
-    uint32_t *dw = (uint32_t *)d;
-    const uint32_t *sw = (const uint32_t *)s;
-    while(size >= sizeof(uint32_t)) {
-        *dw++ = *sw++;
-        size -= sizeof(uint32_t);
-    }
-
-    /* copy remaining tail bytes */
-    d = (uint8_t *)dw;
-    s = (const uint8_t *)sw;
-    while(size) {
-        *d++ = *s++;
-        size--;
-    }
-
     return dest;
 }
 
@@ -126,8 +135,8 @@ static int _qmem_free(QMem *mem, void *ptr)
         return -1;
     }
 
-    QMemBlock *header = (QMemBlock *)((uint8_t *)ptr - sizeof(QMemBlock));
-    if(!block_valid(mem, header)) {
+    QMemBlock *header = block_from_ptr(mem, ptr);
+    if(!header) {
         return -1;
     }
 
@@ -163,12 +172,37 @@ int qmem_init(QMem *mem, void *mempool, size_t size, size_t align, size_t min_sp
     if(!mem || !mempool) {
         return -1;
     }
+    if(align == 0 || (align & (align - 1)) != 0) {
+        return -1;
+    }
+    if(align < sizeof(void *)) {
+        align = sizeof(void *);
+    }
+
+    uintptr_t base = align_up((uintptr_t)mempool, align);
+    size_t adjust = base - (uintptr_t)mempool;
+    if(size < adjust) {
+        return -1;
+    }
+    size = (size - adjust) & ~(size_t)(align - 1);
+    if(size < sizeof(QMemBlock)) {
+        return -1;
+    }
+    if(min_split < sizeof(QMemBlock)) {
+        min_split = sizeof(QMemBlock);
+    }
+    if(min_split > size) {
+        min_split = size;
+    }
+
     mem->align = align;
     mem->min_split = min_split;
     mem->magic = magic;
     mem->max_block = 0;
     mem->total_free = size;
-    mem->blocks = (QMemBlock *)mempool;
+    mem->blocks = (QMemBlock *)base;
+    mem->pool_start = (void *)base;
+    mem->pool_end = (void *)(base + size);
     mem->blocks->size = size;
     mem->blocks->used = 0;
     mem->blocks->next = NULL;
@@ -219,8 +253,8 @@ void *qmem_realloc(QMem *mem, void *ptr, size_t size)
         return NULL;
     }
 
-    QMemBlock *header = (QMemBlock *)((uint8_t *)ptr - sizeof(QMemBlock));
-    if(!block_valid(mem, header)) {
+    QMemBlock *header = block_from_ptr(mem, ptr);
+    if(!header) {
         if(mem->lock) {
             mem->lock(false);
         }
@@ -323,7 +357,7 @@ int qmem_defrag(QMem *mem)
     return 0;
 }
 
-int qmem_status(QMem *mem)
+int qmem_status(QMem *mem, size_t *total_free, size_t *max_block)
 {
     if(!mem) {
         return -1;
@@ -343,6 +377,12 @@ int qmem_status(QMem *mem)
             }
         }
         current = current->next;
+    }
+    if(total_free) {
+        *total_free = mem->total_free;
+    }
+    if(max_block) {
+        *max_block = mem->max_block;
     }
     if(mem->lock) {
         mem->lock(false);
