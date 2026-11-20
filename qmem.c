@@ -58,11 +58,11 @@ static inline QMemBlock *block_from_ptr(QMem *mem, void *ptr)
 #ifndef QMEM_LIBC_UNDEPENDENT
 
 #include <string.h>
-#define _memcpy memcpy
+#define memcpy_ memcpy
 
 #else
 
-static void *_memcpy(void *dest, const void *src, size_t size)
+static void *memcpy_(void *dest, const void *src, size_t size)
 {
     uint8_t *d = (uint8_t *)dest;
     const uint8_t *s = (const uint8_t *)src;
@@ -100,7 +100,7 @@ static inline void block_split(QMemBlock *block, size_t new_size, uint8_t magic)
     block->size = new_size;
 }
 
-static void *_qmem_alloc(QMem *mem, size_t size)
+static void *qmem_alloc_(QMem *mem, size_t size)
 {
     if(!mem || (size == 0) || !mem->blocks) {
         return NULL;
@@ -129,7 +129,7 @@ static void *_qmem_alloc(QMem *mem, size_t size)
     return NULL;
 }
 
-static int _qmem_free(QMem *mem, void *ptr)
+static int qmem_free_(QMem *mem, void *ptr)
 {
     if(!mem || !ptr) {
         return -1;
@@ -220,7 +220,7 @@ void *qmem_alloc(QMem *mem, size_t size)
     if(mem->lock) {
         mem->lock(true);
     }
-    void *ret = _qmem_alloc(mem, size);
+    void *ret = qmem_alloc_(mem, size);
     if(mem->lock) {
         mem->lock(false);
     }
@@ -238,7 +238,7 @@ void *qmem_realloc(QMem *mem, void *ptr, size_t size)
     }
 
     if(ptr == NULL) {
-        void *ret = _qmem_alloc(mem, size);
+        void *ret = qmem_alloc_(mem, size);
         if(mem->lock) {
             mem->lock(false);
         }
@@ -246,7 +246,7 @@ void *qmem_realloc(QMem *mem, void *ptr, size_t size)
     }
 
     if(size == 0) {
-        _qmem_free(mem, ptr);
+        qmem_free_(mem, ptr);
         if(mem->lock) {
             mem->lock(false);
         }
@@ -283,7 +283,7 @@ void *qmem_realloc(QMem *mem, void *ptr, size_t size)
     }
 
     // Allocate new block without re-acquiring lock
-    void *new_ptr = _qmem_alloc(mem, size);
+    void *new_ptr = qmem_alloc_(mem, size);
     if(new_ptr == NULL) {
         if(mem->lock) {
             mem->lock(false);
@@ -295,10 +295,10 @@ void *qmem_realloc(QMem *mem, void *ptr, size_t size)
     // Note: original user size is unknown, so we use min(old_payload, new_size)
     size_t old_payload_size = header->size - sizeof(QMemBlock);
     size_t copy_size = (old_payload_size < size) ? old_payload_size : size;
-    _memcpy(new_ptr, ptr, copy_size);
+    memcpy_(new_ptr, ptr, copy_size);
 
     // Free old block without re-acquiring lock
-    _qmem_free(mem, ptr);
+    qmem_free_(mem, ptr);
 
     if(mem->lock) {
         mem->lock(false);
@@ -314,7 +314,7 @@ int qmem_free(QMem *mem, void *ptr)
     if(mem->lock) {
         mem->lock(true);
     }
-    int ret = _qmem_free(mem, ptr);
+    int ret = qmem_free_(mem, ptr);
     if(mem->lock) {
         mem->lock(false);
     }
