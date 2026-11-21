@@ -32,7 +32,7 @@ void *qmem_alloc(QMem *mem, size_t size);
 void *qmem_realloc(QMem *mem, void *ptr, size_t size);
 int qmem_free(QMem *mem, void *ptr);
 int qmem_defrag(QMem *mem);
-int qmem_status(QMem *mem, size_t *total_free, size_t *max_block);
+int qmem_status(QMem *mem);
 ```
 
 | API | 说明 | 返回值 |
@@ -42,7 +42,7 @@ int qmem_status(QMem *mem, size_t *total_free, size_t *max_block);
 | `qmem_realloc` | 调整已有分配。`ptr == NULL` 时等同于分配；`size == 0` 时释放原块并返回 `NULL`。扩容时尽可能保留原数据；分配失败时返回 `NULL`。 | 成功返回新/原指针；失败返回 `NULL`。 |
 | `qmem_free` | 释放由该分配器分配的块。 | 成功返回 `0`；空指针、无效指针或重复释放返回 `-1`。 |
 | `qmem_defrag` | 合并链表中相邻的空闲块，并更新 `mem->max_block`。 | 成功返回 `0`；空分配器指针返回 `-1`。 |
-| `qmem_status` | 重新计算空闲块统计。输出指针可为 `NULL`；同时更新 `mem->total_free` 和 `mem->max_block`。 | 成功返回 `0`；空分配器指针返回 `-1`。 |
+| `qmem_status` | 重新计算空闲块统计，并更新 `mem->total_free` 和 `mem->max_block`。 | 成功返回 `0`；空分配器指针返回 `-1`。 |
 
 `QMem` 公开结构中的 `total_free` 和 `max_block` 可直接读取，但如需刷新最新值，应调用 `qmem_status`。两项统计均按块总长度计量。
 
@@ -68,10 +68,8 @@ int main(void)
 
     /* 使用 data ... */
 
-    size_t total_free;
-    size_t max_block;
-    if(qmem_status(&mem, &total_free, &max_block) == 0) {
-        /* 查看当前空闲块总量和最大单块容量（均含块头） */
+    if(qmem_status(&mem) == 0) {
+        /* 查看 mem.total_free 与 mem.max_block（均含块头） */
     }
 
     return qmem_free(&mem, data) != 0;

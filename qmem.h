@@ -47,6 +47,6 @@ int qmem_free(QMem *mem, void *ptr);
 
 int qmem_defrag(QMem *mem);
 
-int qmem_status(QMem *mem, size_t *total_free, size_t *max_block);
+int qmem_status(QMem *mem);
 
 #endif

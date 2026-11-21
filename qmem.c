@@ -1,7 +1,7 @@
 /**
  * Author: luoqi
  * Created Date: 2026-01-12 00:12:3
- * Last Modified: 2026-02-12 00:28:30
+ * Last Modified: 2026-11-21 23:55:47
  * Modified By: luoqi at <**@****>
  * Copyright (c) 2026 <*****>
  * Description:
@@ -357,7 +357,7 @@ int qmem_defrag(QMem *mem)
     return 0;
 }
 
-int qmem_status(QMem *mem, size_t *total_free, size_t *max_block)
+int qmem_status(QMem *mem)
 {
     if(!mem) {
         return -1;
@@ -377,12 +377,6 @@ int qmem_status(QMem *mem, size_t *total_free, size_t *max_block)
             }
         }
         current = current->next;
-    }
-    if(total_free) {
-        *total_free = mem->total_free;
-    }
-    if(max_block) {
-        *max_block = mem->max_block;
     }
     if(mem->lock) {
         mem->lock(false);

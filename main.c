@@ -17,8 +17,8 @@ static QMem mem = { 0 };
 
 void mem_stats(void)
 {
-    qmem_status(&mem, &mem.total_free, &mem.max_block);
-    printf("Free memory: %lu, Largest block: %lu\r\n", mem.total_free, mem.max_block);
+    qmem_status(&mem);
+    printf("Free memory: %lu, Largest block: %lu\r\n", (unsigned long)mem.total_free, (unsigned long)mem.max_block);
 }
 
 int main()

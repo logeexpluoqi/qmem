@@ -368,14 +368,10 @@ void test_status_check(void)
     void *ptr1 = qmem_alloc(&mem, 200);
     void *ptr2 = qmem_alloc(&mem, 300);
     
-    size_t total_free = 0;
-    size_t max_block = 0;
-    int result = qmem_status(&mem, &total_free, &max_block);
+    int result = qmem_status(&mem);
     TEST_ASSERT(result == 0, "Status should return 0");
-    TEST_ASSERT(total_free > 0, "Total free should be greater than 0");
-    TEST_ASSERT(max_block > 0, "Max block should be greater than 0");
-    TEST_ASSERT(total_free == mem.total_free, "Total free output should match allocator state");
-    TEST_ASSERT(max_block == mem.max_block, "Max block output should match allocator state");
+    TEST_ASSERT(mem.total_free > 0, "Total free should be greater than 0");
+    TEST_ASSERT(mem.max_block > 0, "Max block should be greater than 0");
 }
 
 /* Test 17: Alignment test */
